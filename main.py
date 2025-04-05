@@ -1,3 +1,4 @@
+# (Semua import tetap)
 import cv2
 import time
 import os
@@ -7,6 +8,7 @@ from dotenv import load_dotenv
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import random
+import numpy as np  # Tambahkan ini untuk stack channel
 
 # Load .env
 load_dotenv()
@@ -33,7 +35,7 @@ sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
     scope="user-modify-playback-state user-read-playback-state"
 ))
 
-# Emosi → genre/keyword
+# Emotion to genre map
 EMOTION_GENRE_MAP = {
     "happy": ["pop", "dance", "electropop", "indie pop"],
     "sad": ["acoustic", "blues", "singer-songwriter", "folk"],
@@ -179,13 +181,19 @@ def capture_and_analyze_emotion():
             remaining = int(countdown - elapsed)
             if remaining > 0:
                 cv2.putText(frame, f"Capturing in {remaining}...",
-                            (200, 70), cv2.FONT_HERSHEY_SIMPLEX,
-                            1, (0, 0, 255), 2)
+                            (200, 70), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
             else:
                 timer_started = False
                 try:
                     rgb_frame = cv2.cvtColor(
                         frame[:, :-sidebar_width], cv2.COLOR_BGR2RGB)
+
+                    # ✅ Tambahan perbaikan di sini:
+                    if rgb_frame.ndim == 2:
+                        rgb_frame = np.stack((rgb_frame,) * 3, axis=-1)
+                    elif rgb_frame.ndim == 3 and rgb_frame.shape[2] == 1:
+                        rgb_frame = np.concatenate([rgb_frame]*3, axis=-1)
+
                     result = DeepFace.analyze(
                         rgb_frame,
                         actions=['emotion'],
