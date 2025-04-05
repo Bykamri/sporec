@@ -121,106 +121,90 @@ def mouse_callback(event, x, y, flags, param):
         click_flag = True
 
 
-def capture_and_analyze_emotion():
-    global click_pos, click_flag, last_emotion, recommended_songs, recommended_uris
-    global timer_started, timer_start_time
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--play", action="store_true",
+                        help="Play the top recommended song")
+    args = parser.parse_args()
 
-    cap = cv2.VideoCapture(CAMERA_INDEX)
+    cap = cv2.VideoCapture(0)
     if not cap.isOpened():
-        print(f"❌ Tidak bisa membuka kamera dengan index {CAMERA_INDEX}")
+        print("❌ Tidak dapat membuka kamera.")
         return
 
-    cv2.namedWindow("Emotion Detector")
-    cv2.setMouseCallback("Emotion Detector", mouse_callback)
+    countdown = 3
+    sidebar_width = 300
+    last_emotion = None
 
     while True:
         ret, frame = cap.read()
         if not ret:
+            print("❌ Gagal membaca frame dari kamera.")
             break
 
-        sidebar_width = 400
-        frame = cv2.copyMakeBorder(
-            frame, 0, 0, 0, sidebar_width, cv2.BORDER_CONSTANT, value=(40, 40, 40))
+        # Tampilkan countdown
+        for i in range(countdown, 0, -1):
+            countdown_frame = frame.copy()
+            cv2.putText(countdown_frame, f"Scan dalam {i} detik...", (50, 50),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            cv2.imshow("Emotion Detection", countdown_frame)
+            cv2.waitKey(1000)
 
-        draw_button(frame, "Capture", BUTTONS["capture"])
-        draw_button(frame, "Quit", BUTTONS["quit"])
+        try:
+            # Ambil bagian frame untuk deteksi wajah (tanpa sidebar)
+            face_area = frame[:, :-sidebar_width]
 
-        if last_emotion:
-            cv2.putText(frame, f"Emosi: {last_emotion}", (frame.shape[1] - sidebar_width + 20, 40),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
-            cv2.putText(frame, "Rekomendasi Lagu:", (frame.shape[1] - sidebar_width + 20, 80),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1)
+            # Konversi ke RGB
+            rgb_frame = cv2.cvtColor(face_area, cv2.COLOR_BGR2RGB)
 
-            for i, song in enumerate(recommended_songs):
-                y = 110 + (i * 30)
-                color = (200, 200, 200)
-                cv2.putText(frame, f"{i+1}. {song[:35]}", (frame.shape[1] - sidebar_width + 20, y),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 1)
+            # Deteksi emosi
+            result = DeepFace.analyze(
+                rgb_frame,
+                actions=['emotion'],
+                enforce_detection=True,
+                detector_backend='opencv'
+            )
 
-        if click_flag:
-            x, y = click_pos
-            click_flag = False
-
-            if is_inside_button(x, y, BUTTONS["capture"]) and not timer_started:
-                timer_started = True
-                timer_start_time = time.time()
-            elif is_inside_button(x, y, BUTTONS["quit"]):
-                break
-
-            if args.play and last_emotion and recommended_uris:
-                sidebar_x = frame.shape[1] - sidebar_width
-                for i in range(len(recommended_uris)):
-                    text_y = 110 + (i * 30)
-                    if sidebar_x + 20 <= x <= sidebar_x + 350 and text_y - 20 <= y <= text_y:
-                        print(f"▶️ Klik lagu #{i+1}: {recommended_songs[i]}")
-                        play_song(recommended_uris[i])
-                        break
-
-        if timer_started:
-            elapsed = time.time() - timer_start_time
-            remaining = int(countdown - elapsed)
-            if remaining > 0:
-                cv2.putText(frame, f"Capturing in {remaining}...",
-                            (200, 70), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+            # Ambil emosi dominan
+            if isinstance(result, list) and result:
+                last_emotion = result[0]['dominant_emotion']
+            elif isinstance(result, dict):
+                last_emotion = result['dominant_emotion']
             else:
-                timer_started = False
-                try:
-                    rgb_frame = cv2.cvtColor(
-                        frame[:, :-sidebar_width], cv2.COLOR_BGR2RGB)
+                last_emotion = "Tidak Terdeteksi"
+                raise ValueError("Hasil analisis tidak valid.")
 
-                    # ✅ Tambahan perbaikan di sini:
-                    if rgb_frame.ndim == 2:
-                        rgb_frame = np.stack((rgb_frame,) * 3, axis=-1)
-                    elif rgb_frame.ndim == 3 and rgb_frame.shape[2] == 1:
-                        rgb_frame = np.concatenate([rgb_frame]*3, axis=-1)
+            print("😄 Emosi Terdeteksi:", last_emotion)
 
-                    result = DeepFace.analyze(
-                        rgb_frame,
-                        actions=['emotion'],
-                        enforce_detection=False,
-                        detector_backend='opencv'
-                    )
-                    last_emotion = result[0]['dominant_emotion']
-                    print("😄 Emosi Terdeteksi:", last_emotion)
+            # Rekomendasi lagu
+            recommended_songs, recommended_uris = recommend_songs(last_emotion)
+            print("🎶 Lagu Rekomendasi:")
+            for song in recommended_songs:
+                print(" -", song)
 
-                    recommended_songs, recommended_uris = recommend_songs(
-                        last_emotion)
-                    print("🎶 Lagu Rekomendasi:")
-                    for song in recommended_songs:
-                        print(" -", song)
+            # Putar lagu jika diminta
+            if args.play and recommended_uris:
+                play_song(recommended_uris[0])
 
-                    if args.play and recommended_uris:
-                        play_song(recommended_uris[0])
+        except Exception as e:
+            print("❌ Gagal menganalisis emosi:", str(e))
+            last_emotion = "Tidak Terdeteksi"
 
-                except Exception as e:
-                    print("❌ Gagal menganalisis emosi:", str(e))
-                    last_emotion = "Tidak Terdeteksi"
-                    recommended_songs = []
-                    recommended_uris = []
+        # Tampilkan hasil di layar
+        sidebar = np.zeros((frame.shape[0], sidebar_width, 3), dtype=np.uint8)
+        cv2.putText(sidebar, "Emosi:", (10, 50),
+                    cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2)
+        if last_emotion:
+            cv2.putText(sidebar, last_emotion, (10, 100),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 3)
 
-        cv2.imshow("Emotion Detector", frame)
-        key = cv2.waitKey(1) & 0xFF
-        if key == ord('q'):
+        combined_frame = cv2.hconcat([frame[:, :-sidebar_width], sidebar])
+        cv2.imshow("Emotion Detection", combined_frame)
+
+        # Tunggu input ESC (27)
+        key = cv2.waitKey(0)
+        if key == 27:
+            print("👋 Keluar dari program.")
             break
 
     cap.release()
@@ -228,4 +212,4 @@ def capture_and_analyze_emotion():
 
 
 if __name__ == "__main__":
-    capture_and_analyze_emotion()
+    main()
