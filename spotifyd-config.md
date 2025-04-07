@@ -1,6 +1,6 @@
-# Sporec 🎵 — Spotify Daemon for Jetson Nano
+# Spotify Daemon for Jetson Nano
 
-**Sporec** adalah setup khusus `spotifyd` yang dikompilasi dari source untuk berjalan sebagai Spotify Connect client di perangkat seperti Jetson Nano, Raspberry Pi, atau device headless lainnya. Cocok untuk dijalankan di speaker pintar, robot musik, atau sistem audio rumah!
+Setup khusus `spotifyd` yang dikompilasi dari source untuk berjalan sebagai Spotify Connect client di perangkat seperti Jetson Nano
 
 ---
 
