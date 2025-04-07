@@ -193,6 +193,7 @@ def capture_and_analyze_emotion():
                         rgb_frame = np.stack((rgb_frame,) * 3, axis=-1)
                     elif rgb_frame.ndim == 3 and rgb_frame.shape[2] == 1:
                         rgb_frame = np.concatenate([rgb_frame]*3, axis=-1)
+                    print("Shape sebelum analyze:", rgb_frame.shape)
 
                     result = DeepFace.analyze(
                         rgb_frame,
