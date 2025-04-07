@@ -1,41 +1,24 @@
-# (Semua import tetap)
 import cv2
+import tkinter as tk
+from PIL import Image, ImageTk, ImageDraw, ImageFont
+import threading
+from deepface import DeepFace
 import time
 import os
-import argparse
-from deepface import DeepFace
 from dotenv import load_dotenv
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 import random
-import numpy as np  # Tambahkan ini untuk stack channel
 
-# Load .env
+# Load .env untuk Spotify
 load_dotenv()
-os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
-
-# Argument parser
-parser = argparse.ArgumentParser(
-    description="Emotion Detector with Spotify Recommendation")
-parser.add_argument("--play", action="store_true",
-                    help="Play the top recommended song on active Spotify device")
-parser.add_argument("--camera", type=int, default=0,
-                    help="Camera index to use (default: 0)")
-args = parser.parse_args()
-
-# Spotify Setup
-SPOTIFY_CLIENT_ID = os.getenv("SPOTIPY_CLIENT_ID")
-SPOTIFY_CLIENT_SECRET = os.getenv("SPOTIPY_CLIENT_SECRET")
-SPOTIFY_REDIRECT_URI = os.getenv("SPOTIPY_REDIRECT_URI")
-
 sp = spotipy.Spotify(auth_manager=SpotifyOAuth(
-    client_id=SPOTIFY_CLIENT_ID,
-    client_secret=SPOTIFY_CLIENT_SECRET,
-    redirect_uri=SPOTIFY_REDIRECT_URI,
+    client_id=os.getenv("SPOTIPY_CLIENT_ID"),
+    client_secret=os.getenv("SPOTIPY_CLIENT_SECRET"),
+    redirect_uri=os.getenv("SPOTIPY_REDIRECT_URI"),
     scope="user-modify-playback-state user-read-playback-state"
 ))
 
-# Emotion to genre map
 EMOTION_GENRE_MAP = {
     "happy": ["pop", "dance", "electropop", "indie pop"],
     "sad": ["acoustic", "blues", "singer-songwriter", "folk"],
@@ -47,186 +30,312 @@ EMOTION_GENRE_MAP = {
 }
 
 
-def recommend_songs(emotion):
-    if emotion not in EMOTION_GENRE_MAP:
-        return [], []
+class CameraApp:
+    def __init__(self, root):
+        self.root = root
+        self.root.geometry("1024x600")
+        self.root.overrideredirect(True)
+        self.root.resizable(False, False)
 
-    genres = EMOTION_GENRE_MAP[emotion]
-    genre = random.choice(genres)
-    results = sp.search(q=f'genre:"{genre}"', type='track', limit=50)
-    tracks = results['tracks']['items']
-    random.shuffle(tracks)
+        self.camera_active = True
+        self.captured = False
+        self.paused = False
+        self.emotion = None
+        self.recommended_songs = []
+        self.loading = False
 
-    selected_tracks = tracks[:5]
-    track_names = [
-        f"{track['name']} - {', '.join(artist['name'] for artist in track['artists'])}" for track in selected_tracks]
-    track_uris = [track['uri'] for track in selected_tracks]
-    return track_names, track_uris
+        self.video_label = tk.Label(self.root, bg="black")
+        self.video_label.pack(fill="both", expand=True)
 
+        self.countdown_label = tk.Label(self.root, text="", font=(
+            "Arial", 72, "bold"), bg="black", fg="white")
+        # Posisi di atas tombol Capture
+        self.countdown_label.place(x=452, y=460)
+        self.countdown_label.lower()
 
-def play_song(uri):
-    devices = sp.devices()
-    jetson_device = None
+        self.loading_label = tk.Label(self.root, text="🔍 Menganalisis emosi...", font=(
+            "Arial", 28), bg="black", fg="white")
+        self.loading_label.place(relx=0.5, rely=0.5, anchor="center")
+        self.loading_label.lower()
 
-    for device in devices['devices']:
-        if "jetson" in device['name'].lower() or device['type'].lower() == 'computer':
-            jetson_device = device['id']
-            break
+        self.emotion_label = tk.Label(self.root, text="", font=(
+            "Arial", 24), bg="black", fg="white")
+        self.emotion_label.place(x=20, y=20)
 
-    if jetson_device:
-        sp.start_playback(device_id=jetson_device, uris=[uri])
-        print("▶️ Memutar lagu di Jetson Nano...")
-    elif devices['devices']:
-        fallback_device = devices['devices'][0]['id']
-        sp.start_playback(device_id=fallback_device, uris=[uri])
-        print("▶️ Memutar lagu di perangkat fallback:",
-              devices['devices'][0]['name'])
-    else:
-        print("❌ Tidak ada perangkat Spotify aktif ditemukan.")
+        self.song_labels = [tk.Label(self.root, text="", font=(
+            "Arial", 16), bg="black", fg="white") for _ in range(10)]
+        for i, label in enumerate(self.song_labels):
+            label.place(x=20, y=60 + i * 30)
+            label.lower()
 
+        self.capture_icon = self.load_icon("icons/capture.png")
+        self.pause_icon = self.load_icon("icons/pause.png")
+        self.play_icon = self.load_icon("icons/play.png")
+        self.reset_icon = self.load_icon("icons/reset.png")
 
-# UI
-CAMERA_INDEX = args.camera
-BUTTONS = {
-    "capture": {"x": 10, "y": 10, "w": 150, "h": 40},
-    "quit": {"x": 10, "y": 60, "w": 150, "h": 40}
-}
+        self.capture_btn = self.make_button(
+            " Capture", self.capture_icon, self.start_countdown)
+        self.capture_btn.place(x=452, y=520, width=120, height=50)
 
-click_pos = (0, 0)
-click_flag = False
-last_emotion = None
-recommended_songs = []
-recommended_uris = []
-timer_started = False
-timer_start_time = None
-countdown = 3
+        self.pause_btn = self.make_button(
+            " Pause", self.pause_icon, self.on_pause)
+        self.play_btn = self.make_button(" Play", self.play_icon, self.on_play)
+        self.reset_btn = self.make_button(
+            " Reset", self.reset_icon, self.reset_view)
 
+        self.pause_btn.place_forget()
+        self.play_btn.place_forget()
+        self.reset_btn.place_forget()
 
-def draw_button(frame, text, button, color=(0, 255, 0)):
-    x, y, w, h = button["x"], button["y"], button["w"], button["h"]
-    cv2.rectangle(frame, (x, y), (x + w, y + h), color, 2)
-    cv2.putText(frame, text, (x + 10, y + h // 2 + 5),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+        self.cap = cv2.VideoCapture(0)
+        self.update_frame()
 
+        # Kotak hitam dengan tombol "X" untuk quit
+        self.quit_frame = tk.Frame(
+            self.root, bg="black", width=500, height=500)
+        # Posisi di pojok kiri atas dengan jarak 10px dari atas dan kiri
+        self.quit_frame.place(x=10, y=10)
 
-def is_inside_button(x, y, button):
-    bx, by, bw, bh = button["x"], button["y"], button["w"], button["h"]
-    return bx <= x <= bx + bw and by <= y <= by + bh
+        self.quit_button = tk.Button(
+            self.quit_frame, text="X", font=("Arial", 20, "bold"),
+            bg="red", fg="white", bd=0, relief="flat",
+            command=self.on_quit
+        )
+        self.quit_button.pack(fill="both", expand=True)
 
+        self.root.bind('<q>', lambda event: self.on_quit())
+        self.root.bind('<Q>', lambda event: self.on_quit())
 
-def mouse_callback(event, x, y, flags, param):
-    global click_pos, click_flag
-    if event == cv2.EVENT_LBUTTONDOWN:
-        click_pos = (x, y)
-        click_flag = True
+    def load_icon(self, path):
+        try:
+            return ImageTk.PhotoImage(Image.open(path).resize((32, 32)))
+        except Exception as e:
+            print(f"⚠️ Gagal memuat ikon {path}:", e)
+            return None
 
+    def make_button(self, text, icon, command):
+        return tk.Button(
+            self.root, text=text, font=("Arial", 14, "bold"),
+            image=icon if icon else None,
+            compound="left" if icon else None,
+            bg="#222222", fg="white", bd=0, relief="flat",
+            activebackground="#333333", highlightthickness=0,
+            command=command
+        )
 
-def capture_and_analyze_emotion():
-    global click_pos, click_flag, last_emotion, recommended_songs, recommended_uris
-    global timer_started, timer_start_time
+    def start_countdown(self):
+        self.capture_btn.place_forget()
+        # Persegi dengan ukuran angka lebih kecil
+        self.countdown_label.config(
+            width=4, height=2, font=("Arial", 48, "bold"))
+        self.countdown_label.lift()
+        self.countdown(3)
 
-    cap = cv2.VideoCapture(CAMERA_INDEX)
-    if not cap.isOpened():
-        print(f"❌ Tidak bisa membuka kamera dengan index {CAMERA_INDEX}")
-        return
+    def countdown(self, count):
+        if count > 0:
+            self.countdown_label.config(text=str(count))
+            self.root.after(1000, self.countdown, count - 1)
+        else:
+            self.countdown_label.lower()
+            self.on_capture()
 
-    cv2.namedWindow("Emotion Detector")
-    cv2.setMouseCallback("Emotion Detector", mouse_callback)
+    def on_capture(self):
+        self.captured = True
+        self.camera_active = False
+        self.loading = True
+        self.loading_label.lift()
 
-    while True:
-        ret, frame = cap.read()
+        # Sembunyikan tombol "X"
+        self.quit_frame.place_forget()
+
+        self.pause_btn.place(x=382, y=520, width=120, height=50)
+        self.play_btn.place(x=522, y=520, width=120, height=50)
+        self.reset_btn.place(x=892, y=540, width=120, height=40)
+
+        threading.Thread(target=self.analyze_emotion, daemon=True).start()
+
+    def save_frame(self, frame):
+        timestamp = time.strftime("%Y%m%d_%H%M%S")  # Format timestamp
+        folder_name = "emotion_analysis_results"
+        os.makedirs(folder_name, exist_ok=True)  # Buat folder jika belum ada
+        filename = os.path.join(
+            folder_name, f"emotion_analysis_{timestamp}.png")
+        try:
+            # Konversi frame dari BGR (OpenCV) ke RGB (PIL)
+            rgb_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            image = Image.fromarray(rgb_frame)
+
+            # Deteksi wajah menggunakan OpenCV
+            face_cascade = cv2.CascadeClassifier(
+                cv2.data.haarcascades + "haarcascade_frontalface_default.xml")
+            gray_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+            faces = face_cascade.detectMultiScale(
+                gray_frame, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
+
+            # Tambahkan kotak di sekitar wajah
+            draw = ImageDraw.Draw(image)
+            for (x, y, w, h) in faces:
+                draw.rectangle([x, y, x + w, y + h], outline="red", width=5)
+
+            # Tambahkan teks emosi pada gambar
+            text = f"Emotion: {self.emotion}"
+            # Pastikan font tersedia
+            try:
+                font = ImageFont.truetype("arial.ttf", 32)
+            except:
+                font = ImageFont.load_default()
+            draw.text((10, 10), text, fill="white", font=font)
+
+            # Simpan gambar
+            image.save(filename)
+            print(f"✅ Gambar disimpan di folder '{folder_name}': {filename}")
+        except Exception as e:
+            print(f"❌ Gagal menyimpan gambar: {e}")
+
+    def analyze_emotion(self):
+        ret, frame = self.cap.read()
         if not ret:
-            break
+            return
 
-        sidebar_width = 400
-        frame = cv2.copyMakeBorder(
-            frame, 0, 0, 0, sidebar_width, cv2.BORDER_CONSTANT, value=(40, 40, 40))
+        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        try:
+            result = DeepFace.analyze(
+                rgb, actions=['emotion'], enforce_detection=False)[0]
+            self.emotion = result['dominant_emotion']
+            self.recommended_songs = self.recommend_songs(self.emotion)
 
-        draw_button(frame, "Capture", BUTTONS["capture"])
-        draw_button(frame, "Quit", BUTTONS["quit"])
+            # Simpan frame dengan hasil analisis emosi dan kotak wajah
+            self.save_frame(frame)
+        except Exception as e:
+            print("❌ Gagal analisa emosi:", str(e))
+            self.emotion = "Tidak Terdeteksi"
+            self.recommended_songs = []
 
-        if last_emotion:
-            cv2.putText(frame, f"Emosi: {last_emotion}", (frame.shape[1] - sidebar_width + 20, 40),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2)
-            cv2.putText(frame, "Rekomendasi Lagu:", (frame.shape[1] - sidebar_width + 20, 80),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 1)
+        self.loading = False
+        self.update_emotion_ui()
 
-            for i, song in enumerate(recommended_songs):
-                y = 110 + (i * 30)
-                color = (200, 200, 200)
-                cv2.putText(frame, f"{i+1}. {song[:35]}", (frame.shape[1] - sidebar_width + 20, y),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 1)
+    def update_emotion_ui(self):
+        if self.emotion:
+            self.emotion_label.config(text=f"Emosi: {self.emotion}")
 
-        if click_flag:
-            x, y = click_pos
-            click_flag = False
-
-            if is_inside_button(x, y, BUTTONS["capture"]) and not timer_started:
-                timer_started = True
-                timer_start_time = time.time()
-            elif is_inside_button(x, y, BUTTONS["quit"]):
-                break
-
-            if args.play and last_emotion and recommended_uris:
-                sidebar_x = frame.shape[1] - sidebar_width
-                for i in range(len(recommended_uris)):
-                    text_y = 110 + (i * 30)
-                    if sidebar_x + 20 <= x <= sidebar_x + 350 and text_y - 20 <= y <= text_y:
-                        print(f"▶️ Klik lagu #{i+1}: {recommended_songs[i]}")
-                        play_song(recommended_uris[i])
-                        break
-
-        if timer_started:
-            elapsed = time.time() - timer_start_time
-            remaining = int(countdown - elapsed)
-            if remaining > 0:
-                cv2.putText(frame, f"Capturing in {remaining}...",
-                            (200, 70), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+        for i, label in enumerate(self.song_labels):
+            if i < len(self.recommended_songs):
+                text, uri = self.recommended_songs[i]
+                label.config(
+                    text=f"{i + 1}. {text}",  # Tambahkan angka di depan lagu
+                    cursor="hand2",
+                    fg="white",  # Ubah warna teks menjadi putih
+                    font=("Arial", 18, "bold")  # Perbesar ukuran font
+                )
+                label.bind("<Button-1>", lambda e,
+                           uri=uri: self.play_track(uri))
+                label.lift()
             else:
-                timer_started = False
-                try:
-                    rgb_frame = cv2.cvtColor(
-                        frame[:, :-sidebar_width], cv2.COLOR_BGR2RGB)
+                label.config(text="", cursor="", fg="white")
+                label.unbind("<Button-1>")
+                label.lower()
 
-                    # ✅ Tambahan perbaikan di sini:
-                    if rgb_frame.ndim == 2:
-                        rgb_frame = np.stack((rgb_frame,) * 3, axis=-1)
-                    elif rgb_frame.ndim == 3 and rgb_frame.shape[2] == 1:
-                        rgb_frame = np.concatenate([rgb_frame]*3, axis=-1)
-                    print("Shape sebelum analyze:", rgb_frame.shape)
-
-                    result = DeepFace.analyze(
-                        rgb_frame,
-                        actions=['emotion'],
-                        enforce_detection=False,
-                        detector_backend='opencv'
+    def recommend_songs(self, emotion):
+        genres = EMOTION_GENRE_MAP.get(emotion.lower(), ["pop"])
+        genre = random.choice(genres)
+        try:
+            results = sp.search(q=f'genre:"{genre}"', type='track', limit=15)
+            tracks = results['tracks']['items']
+            random.shuffle(tracks)
+            seen = set()
+            recommendations = []
+            for track in tracks:
+                track_id = track['id']
+                if track_id not in seen:
+                    seen.add(track_id)
+                    recommendations.append(
+                        (f"{track['name']} - {', '.join(artist['name'] for artist in track['artists'])}", track['uri'])
                     )
-                    last_emotion = result[0]['dominant_emotion']
-                    print("😄 Emosi Terdeteksi:", last_emotion)
+                if len(recommendations) >= 10:
+                    break
+            return recommendations
+        except Exception as e:
+            print("❌ Gagal rekomendasi lagu:", e)
+            return []
 
-                    recommended_songs, recommended_uris = recommend_songs(
-                        last_emotion)
-                    print("🎶 Lagu Rekomendasi:")
-                    for song in recommended_songs:
-                        print(" -", song)
+    def play_track(self, uri):
+        try:
+            sp.start_playback(uris=[uri])
+            print(f"▶️ Memutar: {uri}")
+        except Exception as e:
+            print("❌ Gagal memutar lagu:", e)
 
-                    if args.play and recommended_uris:
-                        play_song(recommended_uris[0])
+    def on_play(self):
+        self.paused = False
+        try:
+            sp.start_playback()
+            print("▶️ Playback dilanjutkan")
+        except Exception as e:
+            print("❌ Gagal memulai playback:", e)
 
-                except Exception as e:
-                    print("❌ Gagal menganalisis emosi:", str(e))
-                    last_emotion = "Tidak Terdeteksi"
-                    recommended_songs = []
-                    recommended_uris = []
+    def on_pause(self):
+        self.paused = True
+        try:
+            sp.pause_playback()
+            print("⏸️ Playback dijeda")
+        except Exception as e:
+            print("❌ Gagal menjeda playback:", e)
 
-        cv2.imshow("Emotion Detector", frame)
-        key = cv2.waitKey(1) & 0xFF
-        if key == ord('q'):
-            break
+    def reset_view(self):
+        self.camera_active = True
+        self.captured = False
+        self.paused = False
+        self.emotion = None
+        self.recommended_songs = []
 
-    cap.release()
-    cv2.destroyAllWindows()
+        self.pause_btn.place_forget()
+        self.play_btn.place_forget()
+        self.reset_btn.place_forget()
+        self.capture_btn.place(x=452, y=520, width=120, height=50)
+
+        # Tampilkan kembali tombol "X"
+        self.quit_frame.place(x=10, y=10)
+
+        self.emotion_label.config(text="")
+        for label in self.song_labels:
+            label.config(text="", cursor="", fg="white")
+            label.unbind("<Button-1>")
+            label.lower()
+
+    def update_frame(self):
+        if self.camera_active and not self.paused:
+            ret, frame = self.cap.read()
+            if ret:
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                h, w, _ = frame.shape
+                target_w, target_h = 1024, 600
+                scale = max(target_w / w, target_h / h)
+                resized = cv2.resize(frame, (int(w * scale), int(h * scale)))
+                x_start = (resized.shape[1] - target_w) // 2
+                y_start = (resized.shape[0] - target_h) // 2
+                cropped = resized[y_start:y_start +
+                                  target_h, x_start:x_start + target_w]
+                image = Image.fromarray(cropped)
+                photo = ImageTk.PhotoImage(image=image)
+                self.video_label.config(image=photo)
+                self.video_label.image = photo
+
+        elif self.captured:
+            black_img = Image.new("RGB", (1024, 600), color="black")
+            black_photo = ImageTk.PhotoImage(black_img)
+            self.video_label.config(image=black_photo)
+            self.video_label.image = black_photo
+            if not self.loading:
+                self.loading_label.lower()
+
+        self.root.after(10, self.update_frame)
+
+    def on_quit(self):
+        self.cap.release()
+        self.root.destroy()
 
 
 if __name__ == "__main__":
-    capture_and_analyze_emotion()
+    root = tk.Tk()
+    app = CameraApp(root)
+    root.mainloop()

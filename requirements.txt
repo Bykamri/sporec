@@ -1,5 +1,3 @@
-# This is a requirements file for a Python project.
 deepface
 python-dotenv
 spotipy
-argparse

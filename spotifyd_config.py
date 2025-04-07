@@ -27,6 +27,7 @@ device_name = "jetson-nano"
 bitrate = 160
 volume_normalisation = true
 use_mpris = false
+autoplay = true
 
 [spotifyd]
 client_id = "{client_id}"

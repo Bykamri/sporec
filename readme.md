@@ -1,152 +1,98 @@
-# Emotion Detector with Spotify Recommendation
+# Emotion-Based Music Recommendation System
 
-## Overview
-
-Program ini mendeteksi emosi dari kamera secara langsung dan merekomendasikan lagu berdasarkan emosi yang terdeteksi menggunakan API Spotify. Program ini juga dapat memutar lagu yang direkomendasikan pada perangkat Spotify aktif.
+This project uses facial emotion analysis to recommend music tracks based on the detected emotion. It integrates with Spotify's API to fetch and play songs.
 
 ---
 
 ## Prerequisites
 
-### 1. **Python Environment**
-
-- Python 3.7 atau lebih tinggi.
-- Instal pustaka yang diperlukan menggunakan requirements.txt:
-  ```bash
-  pip install -r requirements.txt
-  ```
-
-### 2. **Spotify API Credentials**
-
-- Buat akun pengembang Spotify di [Spotify Developer Dashboard](https://developer.spotify.com/dashboard/).
-- Buat aplikasi dan dapatkan kredensial berikut:
-  - `SPOTIPY_CLIENT_ID`
-  - `SPOTIPY_CLIENT_SECRET`
-  - `SPOTIPY_REDIRECT_URI`
-
-### 3. **Environment Variables**
-
-- Gunakan file .env.example yang telah disediakan untuk membuat file .env Anda.
-- Salin isi file .env.example ke file .env dan isi dengan kredensial Spotify Anda:
-  ```
-  SPOTIPY_CLIENT_ID=your_client_id
-  SPOTIPY_CLIENT_SECRET=your_client_secret
-  SPOTIPY_REDIRECT_URI=your_redirect_uri
-  ```
+1. Python 3.7 or higher installed on your system.
+2. A Spotify Developer account to get the required API credentials.
+3. A webcam for emotion detection.
 
 ---
 
-## How to Run the Program
+## Setup Instructions
 
-### 1. **Run the Script**
+### 1. Clone the Repository
 
-Jalankan skrip menggunakan perintah berikut:
+Clone this repository to your local machine:
+
+```bash
+git clone https://github.com/Bykamri/sporec.git
+cd sporec
+```
+
+### 2. Create a Virtual Environment
+
+Create and activate a virtual environment to isolate dependencies:
+
+```bash
+# On Windows
+python -m venv .venv
+.venv\Scripts\activate
+
+# On macOS/Linux
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+### 3. Install Dependencies
+
+Install the required Python packages listed in `requirements.txt`:
+
+```bash
+pip install -r requirements.txt
+```
+
+### 4. Set Up a Spotify Developer Account
+
+To use Spotify's API, you need to set up a developer account and create an app:
+
+1. Go to the [Spotify Developer Dashboard](https://developer.spotify.com/dashboard/).
+2. Log in with your Spotify account or create a new one.
+3. Click **Create an App** and provide a name and description for your app.
+4. After creating the app, navigate to the app's settings.
+5. Add the following **Redirect URI**:  
+   `http://127.0.0.1:8080/callback`
+6. Copy the **Client ID** and **Client Secret** from the app settings.
+
+### 5. Configure Environment Variables
+
+Create a `.env` file in the project root directory (if it doesn't already exist) and add your Spotify API credentials. Use the `.env.example` file as a reference:
+
+```properties
+SPOTIPY_CLIENT_ID=your_spotify_client_id
+SPOTIPY_CLIENT_SECRET=your_spotify_client_secret
+SPOTIPY_REDIRECT_URI=http://127.0.0.1:8080/callback
+SPOTIFY_USERNAME=your_spotify_username_or_email
+SPOTIFY_PASSWORD=your_spotify_password
+```
+
+Replace `your_spotify_client_id`, `your_spotify_client_secret`, `your_spotify_username_or_email`, and `your_spotify_password` with your actual Spotify credentials.
+
+---
+
+## Running the Program
+
+### 1. Start the Program
+
+Run the program using the following command:
 
 ```bash
 python main.py
 ```
 
-- Tambahkan flag `--play` untuk mengaktifkan pemutaran lagu pada perangkat Spotify aktif:
+### 2. Quit the Program
 
-  ```bash
-  python main.py --play
-  ```
-
-- Gunakan argumen `--camera` untuk memilih kamera tertentu (default: `0`):
-  ```bash
-  python main.py --camera 1
-  ```
-
-### 2. **UI Buttons**
-
-- **Capture**: Mengambil frame saat ini dan menganalisis emosi dominan.
-- **Quit**: Keluar dari program.
-
-### 3. **Emotion Detection**
-
-- Program menggunakan pustaka `DeepFace` untuk mendeteksi emosi dari kamera.
-- Emosi yang didukung:
-  - `happy`
-  - `sad`
-  - `angry`
-  - `surprise`
-  - `fear`
-  - `neutral`
-  - `disgust`
-
-### 4. **Song Recommendation**
-
-- Berdasarkan emosi yang terdeteksi, program merekomendasikan lagu menggunakan API pencarian Spotify.
-- Lagu yang direkomendasikan ditampilkan di sidebar.
-
-### 5. **Play Songs**
-
-- Jika flag `--play` digunakan, klik pada lagu yang direkomendasikan untuk memutarnya di perangkat Spotify aktif.
+To quit the program, press the **X** button in the top-left corner of the GUI or press the `Q` key on your keyboard.
 
 ---
 
-## Troubleshooting
+## Notes
 
-### 1. **Kamera Tidak Terdeteksi**
+- Ensure your webcam is connected and accessible by the program.
+- The program saves emotion analysis results in the `emotion_analysis_results/` folder.
+- If you encounter issues with Spotify playback, ensure your Spotify account is active and logged in on a device.
 
-- Pastikan kamera Anda terhubung dan dapat diakses.
-- Gunakan argumen `--camera` untuk mencoba kamera lain:
-  ```bash
-  python main.py --camera 1
-  ```
-
-### 2. **Kesalahan API Spotify**
-
-- Pastikan file .env Anda berisi kredensial Spotify yang valid.
-- Periksa koneksi internet Anda.
-- Pastikan akun Spotify Anda masuk dan memiliki perangkat aktif.
-
-### 3. **Tidak Ada Lagu yang Direkomendasikan**
-
-- Verifikasi bahwa genre dalam `EMOTION_GENRE_MAP` adalah genre Spotify yang valid.
-- Perbarui `EMOTION_GENRE_MAP` dengan genre yang valid jika diperlukan.
-
----
-
-## Customization
-
-### 1. **Ubah Pemetaan Emosi ke Genre**
-
-- Perbarui dictionary `EMOTION_GENRE_MAP` untuk menyesuaikan genre yang terkait dengan setiap emosi:
-  ```python
-  EMOTION_GENRE_MAP = {
-      "happy": ["pop", "dance"],
-      "sad": ["acoustic", "blues"],
-      "angry": ["metal", "punk"],
-      "surprise": ["electronic", "experimental"],
-      "fear": ["ambient", "dark ambient"],
-      "neutral": ["lo-fi", "indie"],
-      "disgust": ["grunge", "garage rock"]
-  }
-  ```
-
-### 2. **Ubah Jumlah Lagu yang Direkomendasikan**
-
-- Ubah parameter `limit` dalam fungsi `recommend_songs`:
-  ```python
-  results = sp.search(q=f'genre:"{genre}"', type='track', limit=50)
-  ```
-
----
-
-## Example Output
-
-### Console Output
-
-```plaintext
-😄 Emosi Terdeteksi: happy
-🎶 Lagu Rekomendasi:
- - Song 1 - Artist 1
- - Song 2 - Artist 2
- - Song 3 - Artist 3
-```
-
-### UI
-
-- Emosi yang terdeteksi dan lagu yang direkomendasikan ditampilkan di sidebar.
-- Klik pada lagu untuk memutarnya (jika `--play` diaktifkan).
+Enjoy using the Emotion-Based Music Recommendation System!
