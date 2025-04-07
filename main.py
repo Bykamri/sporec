@@ -62,11 +62,28 @@ class CameraApp:
             "Arial", 24), bg="black", fg="white")
         self.emotion_label.place(x=20, y=20)
 
-        self.song_labels = [tk.Label(self.root, text="", font=(
-            "Arial", 16), bg="black", fg="white") for _ in range(10)]
+        self.song_labels = [
+            tk.Label(
+                self.root,
+                text="",
+                font=("Arial", 16),
+                bg="black",
+                fg="white",
+                wraplength=600,     # Batas lebar, sisanya akan ke bawah
+                justify="left",     # Rata kiri saat terpotong jadi beberapa baris
+                anchor="w"          # Letak teks mulai dari kiri
+            )
+            for _ in range(5)
+        ]
+
         for i, label in enumerate(self.song_labels):
-            label.place(x=20, y=60 + i * 30)
+            # Jarak antar label diperlebar agar cukup ruang untuk teks lebih dari 1 baris
+            label.place(x=20, y=70 + i * 70, width=600)
             label.lower()
+
+        self.result_image_label = tk.Label(self.root, bg="black")
+        self.result_image_label.place(x=600, y=60, width=400, height=300)
+        self.result_image_label.lower()
 
         self.capture_icon = self.load_icon("icons/capture.png")
         self.pause_icon = self.load_icon("icons/pause.png")
@@ -188,6 +205,7 @@ class CameraApp:
 
             # Simpan gambar
             image.save(filename)
+            self.last_capture_path = filename  # Simpan path gambar terakhir
             print(f"✅ Gambar disimpan di folder '{folder_name}': {filename}")
         except Exception as e:
             print(f"❌ Gagal menyimpan gambar: {e}")
@@ -235,11 +253,23 @@ class CameraApp:
                 label.unbind("<Button-1>")
                 label.lower()
 
+        if self.last_capture_path and os.path.exists(self.last_capture_path):
+            try:
+                img = Image.open(self.last_capture_path)
+                img = img.resize((400, 300), Image.Resampling.LANCZOS)
+                tk_img = ImageTk.PhotoImage(img)
+                self.result_image_label.configure(image=tk_img)
+                # Simpan referensi agar tidak dihapus oleh garbage collector
+                self.result_image_label.image = tk_img
+                self.result_image_label.lift()
+            except Exception as e:
+                print("❌ Gagal menampilkan gambar:", e)
+
     def recommend_songs(self, emotion):
         genres = EMOTION_GENRE_MAP.get(emotion.lower(), ["pop"])
         genre = random.choice(genres)
         try:
-            results = sp.search(q=f'genre:"{genre}"', type='track', limit=15)
+            results = sp.search(q=f'genre:"{genre}"', type='track', limit=10)
             tracks = results['tracks']['items']
             random.shuffle(tracks)
             seen = set()
@@ -251,7 +281,7 @@ class CameraApp:
                     recommendations.append(
                         (f"{track['name']} - {', '.join(artist['name'] for artist in track['artists'])}", track['uri'])
                     )
-                if len(recommendations) >= 10:
+                if len(recommendations) >= 5:
                     break
             return recommendations
         except Exception as e:
@@ -301,6 +331,10 @@ class CameraApp:
             label.config(text="", cursor="", fg="white")
             label.unbind("<Button-1>")
             label.lower()
+
+        self.result_image_label.lower()
+        self.result_image_label.configure(image=None)
+        self.last_capture_path = None
 
     def update_frame(self):
         if self.camera_active and not self.paused:
