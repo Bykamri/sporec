@@ -1,3 +1,4 @@
 deepface
 python-dotenv
 spotipy
+customtkinter
