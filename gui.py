@@ -166,6 +166,21 @@ class App(ctk.CTk):
         self.analysis_layer.place(relx=0.5, rely=0.5, anchor="center")
         self.animate_analysis = True
         self.animate_analysis_text(0)
+
+        # Add force close button
+        self.force_close_button = ctk.CTkButton(
+            self.analysis_layer,
+            text="X",
+            command=self.on_closing,
+            width=40,
+            height=40,
+            fg_color="#E26D5C",
+            hover_color="#B2453C",
+            font=ctk.CTkFont(size=16, weight="bold"),
+            corner_radius=20
+        )
+        self.force_close_button.place(relx=0.975, rely=0.03, anchor="ne")
+
         threading.Thread(target=self.analyze_emotion, daemon=True).start()
 
     def animate_analysis_text(self, step):
@@ -589,6 +604,8 @@ class App(ctk.CTk):
         if hasattr(self, 'now_playing_label') and self.now_playing_label:
             self.now_playing_label.destroy()
             self.now_playing_label = None
+        if hasattr(self, 'force_close_button'):
+            self.force_close_button.destroy()
 
         self.captured_image_label = None
         self.captured_image = None
