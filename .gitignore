@@ -3,3 +3,4 @@
 .cache
 __pycache__/
 emotion_analysis_results/
+captured_emotions/
