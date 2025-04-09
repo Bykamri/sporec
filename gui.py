@@ -704,10 +704,9 @@ class App(ctk.CTk):
             # Ambil gambar dari URL
             image_bytes = urlopen(album_cover_url).read()
             image_stream = io.BytesIO(image_bytes)
-            pil_image = Image.open(image_stream).convert("RGBA")
-
-            # Resize menjadi persegi untuk cover album
-            pil_image = pil_image.resize((250, 250))
+            # Resize langsung saat membuka untuk menghemat memori
+            pil_image = Image.open(image_stream).resize(
+                (200, 200)).convert("RGBA")
 
             # Buat mask lingkaran
             mask = Image.new('L', pil_image.size, 0)
@@ -726,7 +725,7 @@ class App(ctk.CTk):
             center = (pil_image.size[0] // 2, pil_image.size[1] // 2)
             draw = ImageDraw.Draw(pil_image)
             draw.ellipse(
-                (center[0]-15, center[1]-15, center[0]+15, center[1]+15),
+                (center[0]-10, center[1]-10, center[0]+10, center[1]+10),
                 fill=(30, 30, 30, 255)  # warna abu tua / hitam
             )
 
@@ -738,35 +737,45 @@ class App(ctk.CTk):
                     relx=0.185, rely=0.33, anchor="center")
             else:
                 self.album_image_label.configure(image=self.album_photo)
-                self.album_image_label.image = self.album_photo
 
+            # Siapkan cache rotasi untuk optimasi
+            self.rotation_cache = {}
             # Mulai rotasi
             self.is_rotating = True
+            self.rotation_angle = 0
             self.rotate_album_cover()
 
         except Exception as e:
             print("Gagal menampilkan cover album:", e)
 
     def rotate_album_cover(self):
-        if not self.is_rotating or self.album_image is None:
+        if not self.is_rotating or not hasattr(self, 'album_image') or self.album_image is None:
             return
 
-        # Lebih optimal untuk melakukan rotasi dengan increment yang lebih besar
-        # tapi lebih jarang, daripada increment kecil tapi sering
-        self.rotation_angle = (self.rotation_angle + 2) % 360
+        # Kurangi frekuensi rotasi dan tingkatkan increment untuk Jetson Nano
+        self.rotation_angle = (self.rotation_angle +
+                               5) % 360  # Increment 5 derajat
 
-        # Jangan rotasi setiap pembacaan jika tidak terlihat
-        if not hasattr(self, '_last_rotation') or time.time() - self._last_rotation > 0.05:
-            self._last_rotation = time.time()
+        # Gunakan cache untuk mengurangi perhitungan
+        if self.rotation_angle in self.rotation_cache:
+            rotated_photo = self.rotation_cache[self.rotation_angle]
+        else:
+            # Gunakan NEAREST untuk kecepatan alih-alih BICUBIC
             rotated_img = self.album_image.rotate(
-                self.rotation_angle, resample=Image.BICUBIC)
+                self.rotation_angle, resample=Image.NEAREST)
+            rotated_photo = ImageTk.PhotoImage(rotated_img)
 
-            self.album_photo = ImageTk.PhotoImage(rotated_img)
-            self.album_image_label.configure(image=self.album_photo)
-            self.album_image_label.image = self.album_photo
+            # Cache maksimal 36 gambar (jadi tiap 10 derajat)
+            if self.rotation_angle % 10 == 0:
+                self.rotation_cache[self.rotation_angle] = rotated_photo
 
-        # Kurangi frekuensi update untuk mengurangi beban CPU
-        self.after(50, self.rotate_album_cover)
+        # Update gambar
+        if hasattr(self, 'album_image_label') and self.album_image_label:
+            self.album_image_label.configure(image=rotated_photo)
+            self.album_image_label.image = rotated_photo
+
+        # Interval yang lebih lambat untuk Jetson Nano (100ms alih-alih 50ms)
+        self.after(100, self.rotate_album_cover)
 
     def stop_album_rotation(self):
         self.is_rotating = False
