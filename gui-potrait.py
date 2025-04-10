@@ -44,7 +44,7 @@ class App(ctk.CTk):
 
         # self.title("Camera Preview")
         self.geometry("600x1024")
-        self.overrideredirect(True)
+        self.overrideredirect(False)
         self.configure(fg_color="#172121")
         self.resizable(False, False)
 
@@ -465,7 +465,7 @@ class App(ctk.CTk):
 
             # Move the title to the top-left portion
             self.emotion_title_label.place(
-                relx=0.3, rely=0.05, anchor="w")  # Changed from center to west anchor
+                relx=0.15, rely=0.05, anchor="w")  # Changed from center to west anchor
 
             # Extract and display the emotion result in a separate label
             emotion_result = text.split("\n")[1]
@@ -484,7 +484,7 @@ class App(ctk.CTk):
 
             # Position the result below the title, also left-aligned
             self.emotion_result_label.place(
-                relx=0.3, rely=0.1, anchor="w")  # Changed from center to west anchor
+                relx=0.15, rely=0.1, anchor="w")  # Changed from center to west anchor
         else:
             # For error messages or other text, use the original label
             self.analysis_label.configure(text=text)
@@ -511,13 +511,13 @@ class App(ctk.CTk):
             cropped = original.crop((left, top, right, bottom))
 
             # Resize ke ukuran yang pas (misal: 200x200)
-            resized = cropped.resize((170, 170), Image.LANCZOS)
+            resized = cropped.resize((220, 220), Image.LANCZOS)
             self.face_photo = ImageTk.PhotoImage(resized)
 
             # Tampilkan di sisi kanan layer analisis
             face_label = ctk.CTkLabel(
                 self.analysis_layer, image=self.face_photo, text="")
-            face_label.place(relx=0.83, rely=0.1, anchor="center")
+            face_label.place(relx=0.69, rely=0.12, anchor="center")
 
             # Tampilkan maksimal 5 rekomendasi lagu dengan layout yang lebih bagus
         self.track_buttons = []
@@ -525,7 +525,7 @@ class App(ctk.CTk):
         songs_to_show = self.recommended_songs[:5]
 
         # Posisi awal untuk lagu pertama
-        y_position = 0.25
+        y_position = 0.28
         frame_width = 400
         base_frame_height = 50  # Base height for single line
         vertical_spacing = 0.07  # Spacing between song frames
@@ -593,7 +593,7 @@ class App(ctk.CTk):
         # Tampilkan kontrol playback Spotify
         self.show_playback_controls()
 
-        self.reset_button.place(relx=0.3, rely=0.16, anchor="w")
+        self.reset_button.place(relx=0.15, rely=0.16, anchor="w")
 
     def save_analysis_results(self, emotion_text=None):
         """Silently save the captured face image with emotion analysis results and face frame"""
