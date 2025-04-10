@@ -44,7 +44,7 @@ class App(ctk.CTk):
 
         # self.title("Camera Preview")
         self.geometry("1024x600")
-        self.overrideredirect(False)
+        self.overrideredirect(True)
         self.configure(fg_color="#172121")
         self.resizable(False, False)
 
