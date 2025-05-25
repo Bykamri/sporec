@@ -225,8 +225,3 @@ Please discuss new features or significant changes in an issue first.
 
 Enjoy using the Emotion-Based Music Recommendation System!
 
----
-
-## License
-
-This project is licensed under the MIT License. See the `LICENSE.md` file for details (if a separate `LICENSE.md` file is intended to be created and included in the repository).
